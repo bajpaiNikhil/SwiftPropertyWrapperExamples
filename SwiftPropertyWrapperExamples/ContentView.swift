@@ -4,78 +4,178 @@
 //
 //  Created by Nikhil Bajpai on 03/03/26.
 //
-//  This screen demonstrates @State — a source of truth owned by this view.
-//  It also presents a second screen that uses @Binding to mutate the same state
-//  from a child view.
+//  This is the root hub of the demo app. It demonstrates two things directly:
+//    1. @State — owns simple value-type state (darkModeEnabled, showDetailsView)
+//    2. @StateObject — creates and owns AppSettingsViewModel for the whole tree
+//
+//  It then passes state/objects to child screens in three different ways:
+//    - $binding       → DetailView       (@Binding demo)
+//    - init param     → ObservedObjectDemoView (@ObservedObject demo)
+//    - .environmentObject → EnvironmentObjectDemoView (@EnvironmentObject demo)
+//    - nothing        → StateObjectDemoView (creates its own private instance)
 //
 
 import SwiftUI
 
 struct ContentView: View {
-    // @State: A value type owned by this view. When it changes, the view re-renders.
+    // @State: owns simple Bool value types local to this view.
     @State private var darkModeEnabled: Bool = false
-
-    // @State used to control presentation of the details screen.
     @State private var showDetailsView: Bool = false
 
+    // @StateObject: creates and owns the shared reference-type view model.
+    // This instance is passed to ObservedObjectDemoView via init param,
+    // and injected into the environment for EnvironmentObjectDemoView.
+    @StateObject private var settingsViewModel = AppSettingsViewModel()
+
     var body: some View {
-        ZStack {
-            // Background color reacts to the @State value.
-            Color(darkModeEnabled ? .black : .white)
-                .animation(.default, value: darkModeEnabled)
+        NavigationStack {
+            ZStack {
+                Color(darkModeEnabled ? .black : .white)
+                    .ignoresSafeArea()
+                    .animation(.default, value: darkModeEnabled)
 
-            VStack(spacing: 24) {
-                // Title and explanation for the POC
-                Text("Home • @State Demo")
-                    .font(.title)
-                    .bold()
-                    .foregroundColor(darkModeEnabled ? .white : .black)
+                ScrollView {
+                    VStack(spacing: 24) {
+                        Text("Property Wrapper Examples")
+                            .font(.title)
+                            .bold()
+                            .foregroundColor(darkModeEnabled ? .white : .black)
 
-                Text("This screen owns the source of truth using @State.\nToggling below updates the UI locally.")
-                    .multilineTextAlignment(.center)
-                    .foregroundColor(darkModeEnabled ? .white.opacity(0.8) : .black.opacity(0.8))
+                        Text("Tap each demo to explore how the wrapper works.\nThis view is the root — it owns @State and @StateObject.")
+                            .multilineTextAlignment(.center)
+                            .font(.subheadline)
+                            .foregroundColor(darkModeEnabled ? .white.opacity(0.8) : .black.opacity(0.8))
 
-                // Readout that reflects current state
-                Text("Dark Mode is \(darkModeEnabled ? "ON" : "OFF")")
-                    .font(.headline)
-                    .foregroundColor(darkModeEnabled ? .white : .black)
+                        Divider()
 
-                // Local mutation of @State — demonstrates how this view can update its own state
-                Toggle(isOn: $darkModeEnabled) {
-                    Text("Dark Mode (local @State)")
-                        .foregroundColor(darkModeEnabled ? .white : .black)
-                }
-                .toggleStyle(.switch)
-                .padding(.horizontal)
+                        // ── @State demo (inline) ───────────────────────────────
+                        SectionHeader(title: "@State", dark: darkModeEnabled)
 
-                // Navigate to the Binding demo
-                Button {
-                    showDetailsView.toggle()
-                } label: {
-                    Text("Show Details (@Binding Demo)")
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(darkModeEnabled ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
-                        .clipShape(Capsule())
-                        .foregroundColor(darkModeEnabled ? .white : .black)
+                        Text("Dark Mode is \(darkModeEnabled ? "ON" : "OFF")")
+                            .font(.headline)
+                            .foregroundColor(darkModeEnabled ? .white : .black)
+
+                        Toggle(isOn: $darkModeEnabled) {
+                            Text("Dark Mode (local @State)")
+                                .foregroundColor(darkModeEnabled ? .white : .black)
+                        }
+                        .toggleStyle(.switch)
+                        .padding(.horizontal)
+
+                        // ── @Binding demo (sheet) ──────────────────────────────
+                        SectionHeader(title: "@Binding", dark: darkModeEnabled)
+
+                        DemoButton(label: "Open @Binding Demo (sheet)", dark: darkModeEnabled) {
+                            showDetailsView.toggle()
+                        }
+
+                        // ── @ObservedObject demo (push) ────────────────────────
+                        SectionHeader(title: "@ObservedObject", dark: darkModeEnabled)
+
+                        NavigationLink {
+                            // Passing the SAME settingsViewModel owned here.
+                            // That view subscribes via @ObservedObject — it does not own it.
+                            ObservedObjectDemoView(viewModel: settingsViewModel)
+                        } label: {
+                            DemoLinkLabel(label: "Open @ObservedObject Demo", dark: darkModeEnabled)
+                        }
+
+                        // ── @StateObject demo (push) ───────────────────────────
+                        SectionHeader(title: "@StateObject", dark: darkModeEnabled)
+
+                        NavigationLink {
+                            // No object passed in — StateObjectDemoView creates its own.
+                            StateObjectDemoView()
+                        } label: {
+                            DemoLinkLabel(label: "Open @StateObject Demo", dark: darkModeEnabled)
+                        }
+
+                        // ── @EnvironmentObject demo (push) ─────────────────────
+                        SectionHeader(title: "@EnvironmentObject", dark: darkModeEnabled)
+
+                        NavigationLink {
+                            // No init param — the view pulls settingsViewModel from
+                            // the environment injected by .environmentObject() below.
+                            EnvironmentObjectDemoView()
+                        } label: {
+                            DemoLinkLabel(label: "Open @EnvironmentObject Demo", dark: darkModeEnabled)
+                        }
+
+                        Divider()
+
+                        // ── Comparison table ───────────────────────────────────
+                        NavigationLink {
+                            WrapperComparisonView()
+                        } label: {
+                            DemoLinkLabel(label: "Compare All Wrappers", dark: darkModeEnabled)
+                        }
+                    }
+                    .padding()
                 }
             }
-            .padding()
+            .sheet(isPresented: $showDetailsView) {
+                DetailView(
+                    isPresented: $showDetailsView,
+                    darkModeEnabled: $darkModeEnabled
+                )
+            }
         }
-        // Present the details view that receives bindings to mutate state from the child.
-        .sheet(isPresented: $showDetailsView, content: {
-            DetailView(
-                // Pass a binding so the child can dismiss itself
-                isPresented: $showDetailsView,
-                // Pass a binding so the child can toggle dark mode and reflect back here
-                darkModeEnabled: $darkModeEnabled
-            )
-        })
-        .ignoresSafeArea()
+        // Inject settingsViewModel on the NavigationStack (not its content) so that
+        // NavigationLink destinations also inherit it. Applying .environmentObject()
+        // inside the stack's content does not propagate to pushed destinations in iOS 16+.
+        .environmentObject(settingsViewModel)
+    }
+}
+
+// ── Small reusable label views (private to this file) ─────────────────────────
+
+private struct SectionHeader: View {
+    let title: String
+    let dark: Bool
+
+    var body: some View {
+        Text(title)
+            .font(.caption)
+            .fontWeight(.semibold)
+            .foregroundColor(.gray)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+    }
+}
+
+private struct DemoButton: View {
+    let label: String
+    let dark: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(dark ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
+                .clipShape(Capsule())
+                .foregroundColor(dark ? .white : .black)
+        }
+    }
+}
+
+private struct DemoLinkLabel: View {
+    let label: String
+    let dark: Bool
+
+    var body: some View {
+        Text(label)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .background(dark ? Color.white.opacity(0.1) : Color.black.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .foregroundColor(dark ? .white : .black)
+            .padding(.horizontal)
     }
 }
 
 #Preview {
-    // Preview shows how the UI looks and behaves with default state
     ContentView()
 }
